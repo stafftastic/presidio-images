@@ -2,7 +2,7 @@ name: main
 on:
   push:
     branches:
-      - main
+      - multi-platform
 
 jobs:
   build:
@@ -10,6 +10,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: nixbuild/nix-quick-install-action@v34
+      - uses: docker/setup-docker-action@v4
+        with:
+          daemon-config: |
+            {
+              "features": {
+                "containerd-snapshotter": true
+              }
+            }
+      - uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
       - uses: docker/setup-buildx-action@v3
         with:
           driver: docker
@@ -19,4 +30,4 @@ jobs:
           password: ${{secrets.DOCKER_HUB_TOKEN}}
       - shell: bash
         run: |
-          nix run . -- --push
+          nix run . -- --platform linux/amd64,linux/arm64 --push
