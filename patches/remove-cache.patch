@@ -1,0 +1,15 @@
+diff --git a/presidio-analyzer/Dockerfile.transformers b/presidio-analyzer/Dockerfile.transformers
+index 7dbcddb4..66c9308b 100644
+--- a/presidio-analyzer/Dockerfile.transformers
++++ b/presidio-analyzer/Dockerfile.transformers
+@@ -22,7 +22,9 @@ COPY ${NLP_CONF_FILE} /app/${NLP_CONF_FILE}
+ RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+
+ COPY ./pyproject.toml /app/
+-RUN pip install poetry && poetry install --no-root --only=main -E server -E transformers
++RUN pip install poetry \
++    && poetry install --no-root --only=main -E server -E transformers \
++    && rm -rf $(poetry config cache-dir)
+
+ # install nlp models specified in NLP_CONF_FILE
+ COPY ./install_nlp_models.py /app/
