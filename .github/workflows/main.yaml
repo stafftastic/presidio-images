@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest-m
     steps:
       - uses: actions/checkout@v7
-      - uses: nixbuild/nix-quick-install-action@v34
+      - uses: nixbuild/nix-quick-install-action@v35
       - uses: docker/setup-docker-action@v4
         with:
           daemon-config: |
