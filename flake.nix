@@ -434,7 +434,7 @@
                 grep -E '^drwx.* 1001/1001 .* \./app/$' listing
                 grep -E '^drwx.* 1001/1001 .* \./home/presidio/$' listing
                 grep -E '^drwxrwxrwt .* \./tmp/$' listing
-                grep -E '^-rwxr-xr-x .* 1001/1001 .* \./app/entrypoint\.sh$' listing
+                grep -E '^-rwxr-xr-x 1001/1001 .* \./app/entrypoint\.sh$' listing
                 for file in app.py logging.ini default_analyzer.yaml default_recognizers.yaml transformers.yaml; do
                   grep -E "/$file\$" listing
                 done
@@ -444,9 +444,13 @@
                   tar -xf "$layer" -C root
                 done
                 grep -qx 'presidio:x:1001:1001::/home/presidio:/bin/sh' root/etc/passwd
-                [ -x root/bin/presidio-analyzer ] && [ -x root/bin/curl ] && [ -x root/bin/sh ]
-                [ -e root/etc/ssl/certs/ca-certificates.crt ] && [ -e root/etc/services ]
-                [ -e root/usr/share/zoneinfo/Europe/Berlin ]
+                [ -x root/bin/presidio-analyzer ]
+                [ -x root/bin/curl ]
+                [ -x root/bin/sh ]
+                [ -e root/etc/ssl/certs/ca-certificates.crt ]
+                [ -e root/etc/services ]
+                [ "$(readlink root/usr/share/zoneinfo)" = /share/zoneinfo ]
+                [ -e root/share/zoneinfo/Europe/Berlin ]
 
                 jq -e '[.. | .purl? | strings] as $purls
                   | ["pkg:pypi/presidio-analyzer@", "pkg:pypi/torch@", "pkg:pypi/transformers@", "pkg:pypi/de-core-news-sm@"]
