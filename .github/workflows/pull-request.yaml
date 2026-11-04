@@ -1,0 +1,76 @@
+name: Pull Request
+
+on:
+  pull_request: {}
+
+concurrency:
+  group: ${{github.workflow}}-${{github.event.pull_request.number}}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: nix develop -c bash --noprofile --norc -eo pipefail {0}
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: cachix/install-nix-action@v31.11.3
+      - name: Build the lint flake checks
+        run: nix build -L --keep-going .#checks.x86_64-linux.actionlint .#checks.x86_64-linux.ci-coverage .#checks.x86_64-linux.nix-lint .#checks.x86_64-linux.uv-lock
+
+  format:
+    name: format
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: cachix/install-nix-action@v31.11.3
+      - name: Build the format flake checks
+        run: nix build -L --keep-going .#checks.x86_64-linux.formatting
+
+  typecheck:
+    name: typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: cachix/install-nix-action@v31.11.3
+      - name: Evaluate the flake for every system
+        run: nix flake check --no-build --all-systems
+
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: cachix/install-nix-action@v31.11.3
+      - name: Serve the analyzer and query it
+        run: nix build -L --keep-going .#checks.x86_64-linux.smoke
+
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: cachix/install-nix-action@v31.11.3
+      - name: Build the package
+        run: nix build -L --keep-going .#checks.x86_64-linux.package
