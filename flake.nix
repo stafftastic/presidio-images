@@ -229,7 +229,56 @@
                 uv lock --check
                 touch $out
               '';
+          actionlint =
+            pkgs.runCommandLocal "actionlint"
+              {
+                nativeBuildInputs = with pkgs; [
+                  actionlint
+                  shellcheck
+                ];
+              }
+              ''
+                actionlint -config-file ${./.github/actionlint.yaml} ${./.github/workflows}/*.yaml
+                touch $out
+              '';
+          ci-coverage =
+            pkgs.runCommandLocal "ci-coverage"
+              {
+                checks = lib.concatLines (lib.attrNames self.checks.x86_64-linux);
+                passAsFile = [ "checks" ];
+              }
+              ''
+                grep -ohE '\.#checks\.x86_64-linux\.[A-Za-z0-9_-]+' ${./.github/workflows/pull-request.yaml} \
+                  | sed 's/^\.#checks\.x86_64-linux\.//' | sort -u > built
+                sort -u "$checksPath" > declared
+                missing=$(comm -23 declared built)
+                if [ -n "$missing" ]; then
+                  echo "checks not built by any pull request job:" $missing
+                  exit 1
+                fi
+                touch $out
+              '';
           package = self.packages.${system}.default;
+          smoke =
+            pkgs.runCommand "presidio-analyzer-smoke"
+              {
+                nativeBuildInputs = [
+                  self.packages.${system}.default
+                  pkgs.curl
+                  pkgs.jq
+                ];
+                env = {
+                  PORT = "3000";
+                  NLP_CONF_FILE = "${./test/nlp-spacy.yaml}";
+                  HF_HUB_OFFLINE = "1";
+                };
+                __darwinAllowLocalNetworking = true;
+              }
+              ''
+                export HOME=$TMPDIR
+                bash ${./test/smoke.sh}
+                touch $out
+              '';
         }
       );
 
