@@ -1,0 +1,23 @@
+[project]
+name = "presidio-analyzer-server"
+version = "0.0.0"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "presidio-analyzer[server,transformers]",
+    "de-core-news-sm",
+    "torch",
+]
+
+[tool.uv]
+package = false
+environments = ["sys_platform == 'linux'", "sys_platform == 'darwin'"]
+
+[tool.uv.sources]
+presidio-analyzer = { git = "https://github.com/microsoft/presidio", rev = "a47837b20a747d2a4c636da3b93026b5188884f0", subdirectory = "presidio-analyzer" }
+de-core-news-sm = { url = "https://github.com/explosion/spacy-models/releases/download/de_core_news_sm-3.8.0/de_core_news_sm-3.8.0-py3-none-any.whl" }
+torch = { index = "pytorch-cpu" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true

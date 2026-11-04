@@ -1,38 +1,173 @@
 {
-  inputs.nixpkgs.url = "nixpkgs/nixos-unstable";
+  nixConfig = {
+    extra-substituters = [ "https://nix-cache.stafftastic.dev" ];
+    extra-trusted-public-keys = [
+      "nix-cache.stafftastic.dev-0:ZdsEnndbQcuaXq8woMXaAr3Lbv3yDehleaadHzpcEMI="
+    ];
+  };
+
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+
+    pyproject-nix = {
+      url = "github:pyproject-nix/pyproject.nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
+    uv2nix = {
+      url = "github:pyproject-nix/uv2nix";
+      inputs = {
+        pyproject-nix.follows = "pyproject-nix";
+        nixpkgs.follows = "nixpkgs";
+      };
+    };
+
+    pyproject-build-systems = {
+      url = "github:pyproject-nix/build-system-pkgs";
+      inputs = {
+        pyproject-nix.follows = "pyproject-nix";
+        uv2nix.follows = "uv2nix";
+        nixpkgs.follows = "nixpkgs";
+      };
+    };
+  };
 
   outputs =
-    { self, nixpkgs, ... }:
+    {
+      self,
+      nixpkgs,
+      pyproject-nix,
+      uv2nix,
+      pyproject-build-systems,
+    }:
     let
-      lib = nixpkgs.lib;
+      inherit (nixpkgs) lib;
       systems = [
         "aarch64-darwin"
         "aarch64-linux"
-        "x86_64-darwin"
         "x86_64-linux"
       ];
-      argsFor = system: {
-        pkgs = nixpkgs.legacyPackages.${system};
-      };
+      argsFor =
+        system:
+        let
+          pkgs = nixpkgs.legacyPackages.${system};
+
+          workspace = uv2nix.lib.workspace.loadWorkspace { workspaceRoot = ./.; };
+
+          python = lib.head (
+            pyproject-nix.lib.util.filterPythonInterpreters {
+              inherit (workspace) requires-python;
+              inherit (pkgs) pythonInterpreters;
+            }
+          );
+
+          pythonSet = (pkgs.callPackage pyproject-nix.build.packages { inherit python; }).overrideScope (
+            lib.composeManyExtensions [
+              pyproject-build-systems.overlays.wheel
+              (workspace.mkPyprojectOverlay { sourcePreference = "wheel"; })
+              (final: prev: {
+                presidio-analyzer = prev.presidio-analyzer.overrideAttrs (previousAttrs: {
+                  src = presidioSource;
+                  nativeBuildInputs =
+                    previousAttrs.nativeBuildInputs ++ final.resolveBuildSystem { poetry-core = [ ]; };
+                });
+              })
+            ]
+          );
+
+          presidioRev = lib.last (
+            lib.splitString "#"
+              (lib.findFirst (package: package.name == "presidio-analyzer") null
+                (lib.importTOML ./uv.lock).package
+              ).source.git
+          );
+
+          presidioSource = pkgs.fetchFromGitHub {
+            owner = "microsoft";
+            repo = "presidio";
+            rev = presidioRev;
+            hash = "sha256-YHwzEOFp4LbR0Hdh/qWvuw80LcVSff1OagL1KCHFM8w=";
+          };
+        in
+        {
+          inherit
+            system
+            pkgs
+            pythonSet
+            presidioRev
+            presidioSource
+            ;
+          venv = pythonSet.mkVirtualEnv "presidio-analyzer-env" workspace.deps.default;
+        };
       forAllSystems = f: lib.genAttrs systems (system: f (argsFor system));
     in
     {
-      packages = forAllSystems (
-        { pkgs, ... }:
+      devShells = forAllSystems (
+        { pkgs, pythonSet, ... }:
         {
-          default =
+          default = pkgs.mkShell {
+            packages = [
+              pythonSet.python
+              pkgs.uv
+            ];
+            env = {
+              UV_NO_SYNC = "1";
+              UV_PYTHON = pythonSet.python.interpreter;
+              UV_PYTHON_DOWNLOADS = "never";
+            };
+            shellHook = ''
+              unset PYTHONPATH
+            '';
+          };
+        }
+      );
+
+      packages = forAllSystems (
+        {
+          pkgs,
+          system,
+          venv,
+          presidioRev,
+          presidioSource,
+          ...
+        }:
+        {
+          default = self.packages.${system}.presidio-analyzer;
+
+          presidio-analyzer = pkgs.stdenvNoCC.mkDerivation {
+            pname = "presidio-analyzer";
+            version = builtins.substring 0 7 presidioRev;
+            src = presidioSource;
+            sourceRoot = "${presidioSource.name}/presidio-analyzer";
+            nativeBuildInputs = [ pkgs.makeWrapper ];
+            dontConfigure = true;
+            dontBuild = true;
+            installPhase = ''
+              runHook preInstall
+              share=$out/share/presidio-analyzer
+              mkdir -p $share/presidio_analyzer/conf
+              cp app.py logging.ini $share/
+              cp ${./overrides/presidio-analyzer/presidio_analyzer/conf}/*.yaml $share/presidio_analyzer/conf/
+              makeWrapper ${venv}/bin/gunicorn $out/bin/presidio-analyzer \
+                --chdir $share \
+                --set-default PORT 3000 \
+                --set-default WORKERS 1 \
+                --set-default ANALYZER_CONF_FILE $share/presidio_analyzer/conf/default_analyzer.yaml \
+                --set-default RECOGNIZER_REGISTRY_CONF_FILE $share/presidio_analyzer/conf/default_recognizers.yaml \
+                --set-default NLP_CONF_FILE $share/presidio_analyzer/conf/transformers.yaml \
+                --add-flags '-w "$WORKERS" -b "0.0.0.0:$PORT" "app:create_app()"'
+              runHook postInstall
+            '';
+            passthru = { inherit venv; };
+            meta.mainProgram = "presidio-analyzer";
+          };
+
+          docker-build =
             let
-              rev = "a47837b20a747d2a4c636da3b93026b5188884f0";
-              shortRev = builtins.substring 0 7 rev;
               src =
                 pkgs.runCommand "presidio-source"
                   {
-                    src = pkgs.fetchFromGitHub {
-                      inherit rev;
-                      repo = "presidio";
-                      owner = "microsoft";
-                      hash = "sha256-YHwzEOFp4LbR0Hdh/qWvuw80LcVSff1OagL1KCHFM8w=";
-                    };
+                    src = presidioSource;
                   }
                   ''
                     cp -r $src tmp
@@ -47,9 +182,54 @@
             pkgs.writeShellScriptBin "build" ''
               docker buildx build ${src}/presidio-analyzer \
                 -f ${src}/presidio-analyzer/Dockerfile.transformers \
-                -t stafftastic/presidio-analyzer:${shortRev}-${self.shortRev or self.dirtyShortRev or "unknown"} \
+                -t stafftastic/presidio-analyzer:${builtins.substring 0 7 presidioRev}-${
+                  self.shortRev or self.dirtyShortRev or "unknown"
+                } \
                 "$@"
             '';
+        }
+      );
+
+      checks = forAllSystems (
+        {
+          pkgs,
+          system,
+          pythonSet,
+          ...
+        }:
+        {
+          formatting = self.formatter.${system}.check self;
+          nix-lint =
+            pkgs.runCommandLocal "nix-lint"
+              {
+                nativeBuildInputs = with pkgs; [
+                  deadnix
+                  statix
+                ];
+              }
+              ''
+                cd ${self}
+                statix check .
+                deadnix --fail .
+                touch $out
+              '';
+          uv-lock =
+            pkgs.runCommandLocal "uv-lock"
+              {
+                nativeBuildInputs = [ pkgs.uv ];
+                env = {
+                  UV_OFFLINE = "1";
+                  UV_PYTHON = pythonSet.python.interpreter;
+                  UV_PYTHON_DOWNLOADS = "never";
+                };
+              }
+              ''
+                export UV_CACHE_DIR=$TMPDIR/uv
+                cd ${self}
+                uv lock --check
+                touch $out
+              '';
+          package = self.packages.${system}.default;
         }
       );
 
@@ -58,9 +238,18 @@
         pkgs.treefmt.withConfig {
           settings = {
             on-unmatched = "info";
-            formatter.nixfmt = {
-              command = lib.getExe pkgs.nixfmt-rfc-style;
-              includes = [ "*.nix" ];
+            formatter = {
+              nixfmt = {
+                command = lib.getExe pkgs.nixfmt;
+                includes = [ "*.nix" ];
+              };
+              oxfmt = {
+                command = lib.getExe pkgs.oxfmt;
+                includes = [
+                  "*.yaml"
+                  "*.yml"
+                ];
+              };
             };
           };
         }
