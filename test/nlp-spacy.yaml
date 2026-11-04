@@ -1,4 +1,0 @@
-nlp_engine_name: spacy
-models:
-  - lang_code: de
-    model_name: de_core_news_sm
