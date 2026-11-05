@@ -27,6 +27,7 @@ jobs:
             runner: ubuntu-24.04-arm
             architecture: arm64
     runs-on: ${{matrix.runner}}
+    environment: release
     timeout-minutes: 60
     outputs:
       tag: ${{steps.tag.outputs.tag}}
@@ -70,6 +71,7 @@ jobs:
     name: manifest
     needs: image
     runs-on: ubuntu-latest
+    environment: release
     timeout-minutes: 10
     defaults:
       run:
