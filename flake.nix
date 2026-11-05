@@ -342,7 +342,7 @@
                 ];
               }
               ''
-                actionlint -config-file ${./.github/actionlint.yaml} ${./.github/workflows}/*.yaml
+                actionlint ${./.github/workflows}/*.yaml
                 touch $out
               '';
           action-pins = pkgs.runCommandLocal "action-pins" { } ''
