@@ -11,33 +11,77 @@ defaults:
   run:
     shell: nix develop -c bash --noprofile --norc -eo pipefail {0}
 
+env:
+  REPOSITORY: docker.io/stafftastic/presidio-analyzer
+
 jobs:
-  build:
-    name: build
-    runs-on: ubuntu-latest-m
+  image:
+    name: image (${{matrix.system}})
+    strategy:
+      matrix:
+        include:
+          - system: x86_64-linux
+            runner: ubuntu-latest
+            architecture: amd64
+          - system: aarch64-linux
+            runner: ubuntu-24.04-arm
+            architecture: arm64
+    runs-on: ${{matrix.runner}}
     environment: release
-    timeout-minutes: 120
+    timeout-minutes: 60
+    outputs:
+      tag: ${{steps.tag.outputs.tag}}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31.11.3
-      - uses: docker/setup-docker-action@e43656e248c0bd0647d3f5c195d116aacf6fcaf4 # v4.7.0
-        with:
-          daemon-config: |
-            {
-              "features": {
-                "containerd-snapshotter": true
-              }
-            }
-      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
-        with:
-          platforms: arm64
-      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
-        with:
-          driver: docker
+      - name: Derive the image tag
+        id: tag
+        run: echo "tag=$(nix eval --raw .#packages.x86_64-linux.presidio-analyzer.version)-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+      - name: Build the image and its SBOM
+        env:
+          SYSTEM: ${{matrix.system}}
+        run: |
+          nix build -L --out-link image ".#packages.$SYSTEM.presidio-analyzer-image"
+          nix build -L --out-link sbom ".#packages.$SYSTEM.presidio-analyzer-image-sbom"
       - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           username: stafftasticpush
           password: ${{secrets.DOCKER_HUB_TOKEN}}
-      - run: nix run .#docker-build -- --platform linux/amd64,linux/arm64 --push
+      - name: Push the image
+        env:
+          TAG: ${{steps.tag.outputs.tag}}-${{matrix.architecture}}
+        run: |
+          ./image | docker load
+          docker image tag stafftastic/presidio-analyzer:latest "$REPOSITORY:$TAG"
+          docker push "$REPOSITORY:$TAG"
+      - name: Attach the SBOM
+        env:
+          TAG: ${{steps.tag.outputs.tag}}-${{matrix.architecture}}
+        run: |
+          nix shell --inputs-from . nixpkgs#oras --command bash --noprofile --norc -eo pipefail -c '
+            subject="$REPOSITORY@$(oras resolve "$REPOSITORY:$TAG")"
+            cd sbom
+            oras attach --artifact-type application/vnd.cyclonedx+json "$subject" sbom.cdx.json:application/vnd.cyclonedx+json
+            oras attach --artifact-type application/spdx+json "$subject" sbom.spdx.json:application/spdx+json
+          '
+
+  manifest:
+    name: manifest
+    needs: image
+    runs-on: ubuntu-latest
+    environment: release
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: bash --noprofile --norc -eo pipefail {0}
+    steps:
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          username: stafftasticpush
+          password: ${{secrets.DOCKER_HUB_TOKEN}}
+      - name: Push the multi-platform tag
+        env:
+          TAG: ${{needs.image.outputs.tag}}
+        run: docker buildx imagetools create --tag "$REPOSITORY:$TAG" "$REPOSITORY:$TAG-amd64" "$REPOSITORY:$TAG-arm64"
