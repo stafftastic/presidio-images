@@ -30,4 +30,4 @@ jobs:
           password: ${{secrets.DOCKER_HUB_TOKEN}}
       - shell: bash
         run: |
-          nix run . -- --platform linux/amd64,linux/arm64 --push
+          nix run .#docker-build -- --platform linux/amd64,linux/arm64 --push
