@@ -222,7 +222,68 @@
                 uv lock --check
                 touch $out
               '';
+          actionlint =
+            pkgs.runCommandLocal "actionlint"
+              {
+                nativeBuildInputs = with pkgs; [
+                  actionlint
+                  shellcheck
+                ];
+              }
+              ''
+                actionlint -config-file ${./.github/actionlint.yaml} ${./.github/workflows}/*.yaml
+                touch $out
+              '';
+          action-pins = pkgs.runCommandLocal "action-pins" { } ''
+            unpinned=$(find ${./.github/workflows} -name '*.y*ml' -exec grep -nHE '^[[:space:]-]*uses:' {} + \
+              | grep -vE '^[^:]+:[0-9]+:[[:space:]-]*uses:[[:space:]]+\./[^[:space:]]*[[:space:]]*$' \
+              | grep -vE '^[^:]+:[0-9]+:[[:space:]-]*uses:[[:space:]]+[A-Za-z0-9_.-]+/[A-Za-z0-9_./-]+@[0-9a-f]{40} # [^[:space:]]+[[:space:]]*$' \
+              | grep -vE '^[^:]+:[0-9]+:[[:space:]-]*uses:[[:space:]]+docker://[^[:space:]@#]+@sha256:[0-9a-f]{64}[[:space:]]*$' || true)
+            if [ -n "$unpinned" ]; then
+              echo "pin these as <action>@<commit> # <tag> (docker:// as @sha256:<digest>):"
+              echo "$unpinned"
+              exit 1
+            fi
+            touch $out
+          '';
+          ci-coverage =
+            pkgs.runCommandLocal "ci-coverage"
+              {
+                checks = lib.concatLines (lib.attrNames self.checks.x86_64-linux);
+                passAsFile = [ "checks" ];
+              }
+              ''
+                grep -ohE '\.#checks\.x86_64-linux\.[A-Za-z0-9_-]+' ${./.github/workflows/pull-request.yaml} \
+                  | sed 's/^\.#checks\.x86_64-linux\.//' | sort -u > built
+                sort -u "$checksPath" > declared
+                missing=$(comm -23 declared built)
+                if [ -n "$missing" ]; then
+                  echo "checks not built by any pull request job:" $missing
+                  exit 1
+                fi
+                touch $out
+              '';
           package = self.packages.${system}.default;
+          smoke =
+            pkgs.runCommand "presidio-analyzer-smoke"
+              {
+                nativeBuildInputs = [
+                  self.packages.${system}.default
+                  pkgs.curl
+                  pkgs.jq
+                ];
+                env = {
+                  PORT = "3000";
+                  NLP_CONF_FILE = "${./test/nlp-spacy.yaml}";
+                  HF_HUB_OFFLINE = "1";
+                };
+                __darwinAllowLocalNetworking = true;
+              }
+              ''
+                export HOME=$TMPDIR
+                bash ${./test/smoke.sh}
+                touch $out
+              '';
         }
       );
 
