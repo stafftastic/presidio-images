@@ -85,7 +85,7 @@
             owner = "microsoft";
             repo = "presidio";
             rev = presidioRev;
-            hash = "sha256-YHwzEOFp4LbR0Hdh/qWvuw80LcVSff1OagL1KCHFM8w=";
+            hash = "sha256-k0Pjgvrah3WDSaLZc/anQG6c37k+eJ9q34nhLkes/LY=";
           };
         in
         {
