@@ -13,7 +13,7 @@ package = false
 environments = ["sys_platform == 'linux'", "sys_platform == 'darwin'"]
 
 [tool.uv.sources]
-presidio-analyzer = { git = "https://github.com/microsoft/presidio", rev = "211afc337241aee8bf495f282e83ef639a5d015f", subdirectory = "presidio-analyzer" }
+presidio-analyzer = { git = "https://github.com/microsoft/presidio", rev = "fd78e974fbf9e15dad1f90de4fc125db39ef4200", subdirectory = "presidio-analyzer" }
 de-core-news-sm = { url = "https://github.com/explosion/spacy-models/releases/download/de_core_news_sm-3.8.0/de_core_news_sm-3.8.0-py3-none-any.whl" }
 torch = { index = "pytorch-cpu" }
 
