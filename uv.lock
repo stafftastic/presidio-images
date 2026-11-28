@@ -464,10 +464,9 @@ wheels = [
 [[package]]
 name = "presidio-analyzer"
 version = "2.2.366"
-source = { git = "https://github.com/microsoft/presidio?subdirectory=presidio-analyzer&rev=211afc337241aee8bf495f282e83ef639a5d015f#211afc337241aee8bf495f282e83ef639a5d015f" }
+source = { git = "https://github.com/microsoft/presidio?subdirectory=presidio-analyzer&rev=ab2dd2af2efca2b49a5025e4e04d741840ff7d57#ab2dd2af2efca2b49a5025e4e04d741840ff7d57" }
 dependencies = [
     { name = "click" },
-    { name = "numpy" },
     { name = "phonenumbers" },
     { name = "preshed" },
     { name = "pydantic" },
@@ -502,7 +501,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "de-core-news-sm", url = "https://github.com/explosion/spacy-models/releases/download/de_core_news_sm-3.8.0/de_core_news_sm-3.8.0-py3-none-any.whl" },
-    { name = "presidio-analyzer", extras = ["server", "transformers"], git = "https://github.com/microsoft/presidio?subdirectory=presidio-analyzer&rev=211afc337241aee8bf495f282e83ef639a5d015f" },
+    { name = "presidio-analyzer", extras = ["server", "transformers"], git = "https://github.com/microsoft/presidio?subdirectory=presidio-analyzer&rev=ab2dd2af2efca2b49a5025e4e04d741840ff7d57" },
     { name = "torch", index = "https://download.pytorch.org/whl/cpu" },
 ]
 
